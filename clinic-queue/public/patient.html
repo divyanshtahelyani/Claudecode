@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Patient · Clinic Queue</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/patient"><span class="dot">+</span> Clinic Queue</a>
+    <span class="muted">Patient</span>
+  </header>
+
+  <main class="wrap narrow">
+    <div class="tabs">
+      <button data-tab="book" class="active">Book appointment</button>
+      <button data-tab="mine">My tokens</button>
+    </div>
+
+    <section id="tab-book" class="card">
+      <h2>Book an appointment</h2>
+      <form id="bookForm">
+        <label for="b-name">Patient name</label>
+        <input id="b-name" name="name" required maxlength="80" autocomplete="name">
+        <div class="field-row">
+          <div>
+            <label for="b-phone">Mobile number</label>
+            <input id="b-phone" name="phone" required inputmode="tel" autocomplete="tel" placeholder="e.g. 9876543210">
+          </div>
+          <div>
+            <label for="b-age">Age</label>
+            <input id="b-age" name="age" type="number" min="0" max="130">
+          </div>
+        </div>
+        <label for="b-gender">Gender</label>
+        <select id="b-gender" name="gender">
+          <option value="">Prefer not to say</option><option value="F">Female</option><option value="M">Male</option><option value="O">Other</option>
+        </select>
+        <label for="b-doctor">Doctor</label>
+        <select id="b-doctor" name="doctorId" required></select>
+        <label for="b-date">Date</label>
+        <input id="b-date" name="date" type="date" required>
+        <label for="b-reason">Reason for visit (optional)</label>
+        <input id="b-reason" name="reason" maxlength="300" placeholder="e.g. fever since 2 days">
+        <p></p>
+        <button class="primary big block" type="submit">Get my token</button>
+      </form>
+    </section>
+
+    <section id="tab-mine" class="hidden">
+      <div class="card">
+        <form id="lookupForm" class="row">
+          <input class="grow" id="m-phone" required inputmode="tel" placeholder="Your mobile number">
+          <button class="primary" type="submit">Show</button>
+        </form>
+        <p class="small muted" style="margin:8px 0 0">Keep this page open — when your number is called your phone will ring a chime and show an alert.</p>
+        <button id="notifyBtn" class="sm hidden" style="margin-top:8px">🔔 Allow notifications</button>
+      </div>
+      <div id="myList"></div>
+    </section>
+  </main>
+
+  <div id="turnAlert" class="overlay hidden">
+    <div class="panel">
+      <h2>It's your turn!</h2>
+      <div class="token pulse" id="ta-token"></div>
+      <p id="ta-text" style="font-size:1.1rem"></p>
+      <button class="primary big block" id="ta-ok">OK, I'm going</button>
+    </div>
+  </div>
+
+  <script src="/common.js"></script>
+  <script>
+    const bookForm = $('#bookForm');
+    const phoneKey = 'patientPhone';
+    let myIds = new Set();
+
+    // ---- tabs ----
+    function showTab(name) {
+      $$('.tabs button').forEach((b) => b.classList.toggle('active', b.dataset.tab === name));
+      $('#tab-book').classList.toggle('hidden', name !== 'book');
+      $('#tab-mine').classList.toggle('hidden', name !== 'mine');
+      if (name === 'mine') loadMine();
+    }
+    $$('.tabs button').forEach((b) => b.addEventListener('click', () => { unlockAudio(); showTab(b.dataset.tab); }));
+
+    // ---- booking ----
+    async function loadDoctors() {
+      const [doctors, board] = await Promise.all([api('/api/doctors'), api('/api/board')]);
+      const waitingBy = Object.fromEntries(board.doctors.map((b) => [b.doctor.id, b.waiting + b.booked]));
+      const sel = $('#b-doctor');
+      const keep = sel.value;
+      sel.innerHTML = doctors.length
+        ? doctors.map((d) => `<option value="${d.id}">${esc(d.name)} — ${esc(d.specialty || 'General')}${d.room ? ` (Room ${esc(d.room)})` : ''} · ${waitingBy[d.id] || 0} in queue today</option>`).join('')
+        : '<option value="">No doctors available</option>';
+      if (keep) sel.value = keep;
+    }
+    $('#b-date').value = todayStr();
+    $('#b-date').min = todayStr();
+    const savedPhone = storage.get(phoneKey);
+    if (savedPhone) { $('#b-phone').value = savedPhone; $('#m-phone').value = savedPhone; }
+
+    bookForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      unlockAudio();
+      const body = Object.fromEntries(new FormData(bookForm));
+      const btn = bookForm.querySelector('button[type=submit]');
+      btn.disabled = true;
+      try {
+        const a = await api('/api/book', { method: 'POST', body });
+        storage.set(phoneKey, body.phone);
+        $('#m-phone').value = body.phone;
+        toast(`Booked! Your token is ${a.token}`);
+        bookForm.reset();
+        $('#b-phone').value = body.phone;
+        $('#b-date').value = todayStr();
+        showTab('mine');
+      } catch (err) {
+        toast(err.message, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // ---- my tokens ----
+    const statusHelp = {
+      booked: 'Booked. Please check in at reception when you arrive.',
+      waiting: 'Checked in. Please wait — we will call your number.',
+      called: 'Your number has been called — please go in now.',
+      done: 'Consultation complete. Get well soon!',
+      skipped: 'You were called but missed your turn. Please speak to reception.',
+      cancelled: 'Cancelled.',
+    };
+
+    async function loadMine() {
+      const phone = $('#m-phone').value.trim();
+      const list = $('#myList');
+      if (!phone) { list.innerHTML = ''; return; }
+      try {
+        const items = await api(`/api/my?phone=${encodeURIComponent(phone)}`);
+        storage.set(phoneKey, phone);
+        myIds = new Set(items.map((a) => a.id));
+        if (!items.length) {
+          list.innerHTML = '<div class="card empty">No upcoming appointments for this number.</div>';
+          return;
+        }
+        list.innerHTML = items.map((a) => `
+          <div class="card">
+            <div class="row">
+              <span class="token-chip">${a.token}</span>
+              <div class="grow">
+                <b>${esc(a.patientName)}</b> ${badge(a.status)}<br>
+                <span class="muted small">${esc(a.doctor.name)}${a.doctor.room ? ` · Room ${esc(a.doctor.room)}` : ''} · ${fmtDate(a.date)}</span>
+              </div>
+            </div>
+            <p style="margin:10px 0 0">${esc(statusHelp[a.status] || '')}</p>
+            ${['booked', 'waiting'].includes(a.status) ? `
+              <div class="stats" style="margin-top:10px">
+                <div class="stat"><span class="small muted">Now serving</span><b>${a.nowServing ?? '—'}</b></div>
+                <div class="stat"><span class="small muted">Ahead of you</span><b>${a.ahead}</b></div>
+                <div class="stat"><span class="small muted">Approx. wait</span><b>${a.estimatedWaitMinutes ? `~${a.estimatedWaitMinutes}m` : 'Soon'}</b></div>
+              </div>
+              <p style="margin:10px 0 0"><button class="sm danger" data-cancel="${a.id}">Cancel appointment</button></p>` : ''}
+          </div>`).join('');
+      } catch (err) {
+        list.innerHTML = `<div class="card empty">${esc(err.message)}</div>`;
+      }
+    }
+
+    $('#lookupForm').addEventListener('submit', (e) => { e.preventDefault(); unlockAudio(); loadMine(); });
+    $('#myList').addEventListener('click', async (e) => {
+      const id = e.target.dataset.cancel;
+      if (!id || !confirm('Cancel this appointment?')) return;
+      try {
+        await api(`/api/my/${id}/cancel`, { method: 'POST', body: { phone: $('#m-phone').value } });
+        toast('Appointment cancelled');
+        loadMine();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    // ---- notifications ----
+    if ('Notification' in window && Notification.permission === 'default') {
+      $('#notifyBtn').classList.remove('hidden');
+      $('#notifyBtn').addEventListener('click', async () => {
+        await Notification.requestPermission();
+        $('#notifyBtn').classList.add('hidden');
+      });
+    }
+
+    function yourTurn(ev) {
+      $('#ta-token').textContent = ev.token;
+      $('#ta-text').textContent = `Please go to ${ev.doctorName}${ev.room ? `, Room ${ev.room}` : ''}.`;
+      $('#turnAlert').classList.remove('hidden');
+      chime();
+      speak(`Token ${ev.token}, it is your turn. ${callText(ev)}`);
+      if (navigator.vibrate) navigator.vibrate([400, 200, 400, 200, 400]);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try { new Notification(`Token ${ev.token} — it's your turn`, { body: $('#ta-text').textContent }); } catch { /* mobile */ }
+      }
+    }
+    $('#ta-ok').addEventListener('click', () => $('#turnAlert').classList.add('hidden'));
+
+    loadDoctors().catch((err) => toast(err.message, 'error'));
+    if (savedPhone) loadMine();
+
+    // Refresh every 5 seconds, without disturbing a field the patient is using right now.
+    setInterval(() => {
+      if (document.activeElement !== $('#b-doctor')) loadDoctors().catch(() => {});
+      if (document.activeElement !== $('#m-phone') && $('#m-phone').value.trim()) loadMine();
+    }, REFRESH_MS);
+    watchCalls((c) => { if (myIds.has(c.appointmentId)) yourTurn(c); });
+  </script>
+</body>
+</html>

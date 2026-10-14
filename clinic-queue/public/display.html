@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Now Serving · Clinic Queue</title>
+  <link rel="icon" href="/favicon.png">
+  <link rel="stylesheet" href="/style.css">
+  <style>
+    body { min-height: 100vh; }
+    .disp-head { display: flex; align-items: center; gap: 12px; padding: 16px 24px; background: var(--brand); color: var(--brand-ink); }
+    .disp-head h1 { margin: 0; font-size: clamp(1.3rem, 3vw, 2.2rem); flex: 1; }
+    .clock { font-size: clamp(1.2rem, 2.5vw, 2rem); font-variant-numeric: tabular-nums; font-weight: 700; }
+    .boards { display: grid; gap: 20px; padding: 24px; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+    .board { background: var(--surface); border: 1px solid var(--line); border-radius: 18px; padding: 20px; text-align: center; transition: box-shadow .2s, transform .2s; }
+    .board .doc { font-size: clamp(1.1rem, 2vw, 1.5rem); font-weight: 700; }
+    .board .now { font-size: clamp(5rem, 12vw, 9rem); font-weight: 900; line-height: 1; color: var(--brand); font-variant-numeric: tabular-nums; margin: 12px 0; }
+    .board .label { text-transform: uppercase; letter-spacing: .1em; font-size: .85rem; color: var(--muted); font-weight: 700; }
+    .board .next { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 8px; min-height: 44px; }
+    .board .now.idle { color: var(--muted); font-size: clamp(2rem, 5vw, 3rem); padding: 2.2rem 0; }
+    .board.flash { box-shadow: 0 0 0 6px var(--brand); transform: scale(1.02); }
+    .ticker { position: fixed; left: 0; right: 0; bottom: 0; padding: 14px 24px; background: var(--text); color: var(--bg); font-size: clamp(1.1rem, 2.5vw, 1.8rem); font-weight: 700; text-align: center; }
+    #start { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: var(--bg); }
+  </style>
+</head>
+<body>
+  <div id="start">
+    <div style="text-align:center;padding:16px">
+      <h1>Waiting-room display</h1>
+      <p class="muted">Put this screen on the TV. Click below once so the browser allows sound and voice announcements.</p>
+      <button class="primary big" id="startBtn">▶ Start display</button>
+    </div>
+  </div>
+
+  <header class="disp-head">
+    <h1>Now Serving</h1>
+    <span class="clock" id="clock"></span>
+  </header>
+  <main class="boards" id="boards"></main>
+  <div class="ticker" id="ticker">Please have your token number ready.</div>
+
+  <script src="/common.js"></script>
+  <script>
+    async function load() {
+      const { doctors } = await api('/api/board');
+      $('#boards').innerHTML = doctors.length ? doctors.map((b) => `
+        <div class="board" data-doctor="${b.doctor.id}">
+          <div class="doc">${esc(b.doctor.name)}</div>
+          <div class="muted">${esc(b.doctor.specialty)}${b.doctor.room ? ` · Room ${esc(b.doctor.room)}` : ''}</div>
+          <div class="now${b.nowServing ? '' : ' idle'}">${b.nowServing ?? 'Not started'}</div>
+          <div class="label">Up next</div>
+          <div class="next">${b.upNext.length ? b.upNext.map((t) => `<span class="token-chip">${t}</span>`).join('') : '<span class="muted">—</span>'}</div>
+          <p class="muted small" style="margin:10px 0 0">${b.waiting} waiting</p>
+        </div>`).join('') : '<p class="empty">No doctors on duty.</p>';
+    }
+
+    function onCall(ev) {
+      const text = callText(ev);
+      $('#ticker').textContent = `🔔 Token ${ev.token} → ${ev.doctorName}${ev.room ? `, Room ${ev.room}` : ''}`;
+      chime();
+      // Say it twice so nobody misses it.
+      setTimeout(() => { speak(text); speak(text); }, 900);
+      load().then(() => {
+        const card = $(`.board[data-doctor="${ev.doctorId}"]`);
+        if (!card) return;
+        card.classList.add('flash');
+        setTimeout(() => card.classList.remove('flash'), 6000);
+      });
+    }
+
+    $('#startBtn').addEventListener('click', () => {
+      unlockAudio();
+      speak(''); // unlocks speech on some browsers
+      $('#start').remove();
+      if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen().catch(() => {});
+    });
+
+    const tick = () => { $('#clock').textContent = new Date().toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }); };
+    tick();
+    setInterval(tick, 10e3);
+
+    every5s(load);       // refresh the boards every 5 seconds
+    watchCalls(onCall);  // announce every new call (checked every 5 seconds)
+  </script>
+</body>
+</html>
