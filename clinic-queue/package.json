@@ -1,0 +1,12 @@
+{
+  "name": "clinic-queue",
+  "version": "1.0.0",
+  "description": "Clinic appointment and token-calling system with patient, reception and doctor sides",
+  "main": "server.js",
+  "private": true,
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "start": "node --no-warnings=ExperimentalWarning server.js",
+    "test": "node --no-warnings=ExperimentalWarning --test test/*.test.js"
+  }
+}

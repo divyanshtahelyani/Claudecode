@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doctor · Clinic Queue</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot">+</span> Clinic Queue</a>
+    <span class="muted" id="whoami">Doctor</span>
+    <span class="spacer"></span>
+    <button id="logoutBtn" class="sm hidden">Log out</button>
+  </header>
+
+  <main id="loginView" class="wrap narrow hidden">
+    <div class="card">
+      <h2>Doctor login</h2>
+      <form id="loginForm">
+        <label for="l-doctor">Doctor</label>
+        <select id="l-doctor" required></select>
+        <label for="l-pin">PIN</label>
+        <input id="l-pin" type="password" inputmode="numeric" autocomplete="current-password" required>
+        <p></p>
+        <button class="primary block" type="submit">Log in</button>
+      </form>
+    </div>
+  </main>
+
+  <main id="appView" class="wrap hidden">
+    <div class="grid cols-2">
+      <div>
+        <div class="card" id="current"></div>
+        <div class="card">
+          <div class="stats" id="stats"></div>
+        </div>
+      </div>
+      <div>
+        <div class="card">
+          <h2>Waiting queue</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Token</th><th>Patient</th><th>Waiting</th><th></th></tr></thead>
+              <tbody id="waitingRows"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <h2>Seen today</h2>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Token</th><th>Patient</th><th>Status</th><th>Notes</th></tr></thead>
+              <tbody id="doneRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const KEY = 'doctorToken';
+    let me = null;
+    let appts = [];
+
+    const authed = (path, opts = {}) => api(path, { ...opts, auth: KEY }).catch((err) => {
+      if (err.status === 401) { storage.del(KEY); showLogin(); }
+      throw err;
+    });
+
+    async function showLogin() {
+      me = null;
+      $('#whoami').textContent = 'Doctor';
+      $('#loginView').classList.remove('hidden');
+      $('#appView').classList.add('hidden');
+      $('#logoutBtn').classList.add('hidden');
+      const doctors = await api('/api/doctors');
+      $('#l-doctor').innerHTML = doctors.map((d) => `<option value="${d.id}">${esc(d.name)} — ${esc(d.specialty)}</option>`).join('');
+    }
+    async function showApp(doctor) {
+      me = doctor;
+      $('#whoami').textContent = `${doctor.name}${doctor.room ? ` · Room ${doctor.room}` : ''}`;
+      $('#loginView').classList.add('hidden');
+      $('#appView').classList.remove('hidden');
+      $('#logoutBtn').classList.remove('hidden');
+      await load();
+    }
+
+    $('#loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('/api/login', { method: 'POST', body: { role: 'doctor', doctorId: $('#l-doctor').value, pin: $('#l-pin').value } });
+        storage.set(KEY, r.token);
+        $('#l-pin').value = '';
+        showApp(r.doctor);
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    setupLogout($('#logoutBtn'), KEY, showLogin);
+
+    async function load() {
+      if (!me) return;
+      appts = await authed(`/api/appointments?date=${todayStr()}`);
+      render();
+    }
+
+    function render() {
+      const current = appts.find((a) => a.status === 'called');
+      const waiting = appts.filter((a) => a.status === 'waiting');
+      const seen = appts.filter((a) => ['done', 'skipped'].includes(a.status)).reverse();
+      const booked = appts.filter((a) => a.status === 'booked').length;
+
+      // Keep whatever the doctor is typing if the same patient is still in the room.
+      const notesEl = $('#notes');
+      const draft = notesEl && current && Number(notesEl.dataset.id) === current.id ? notesEl.value : null;
+
+      $('#current').innerHTML = current ? `
+        <span class="small muted">With you now</span>
+        <div class="row" style="margin:6px 0 10px">
+          <span class="token-chip" style="height:60px;min-width:60px;font-size:1.6rem">${current.token}</span>
+          <div class="grow">
+            <h2 style="margin:0">${esc(current.patient.name)}</h2>
+            <span class="muted small">${current.patient.age != null ? `${current.patient.age} yrs` : ''} ${esc(genderLabel(current.patient.gender))} · ${esc(current.patient.phone)}</span>
+          </div>
+        </div>
+        ${current.reason ? `<p style="margin:0 0 6px"><b>Reason:</b> ${esc(current.reason)}</p>` : ''}
+        <label for="notes">Consultation notes</label>
+        <textarea id="notes" data-id="${current.id}" placeholder="Diagnosis, prescription, follow-up…">${esc(current.notes)}</textarea>
+        <div class="grid" style="margin-top:12px;gap:8px">
+          <button class="primary big" id="finishNext" ${waiting.length ? '' : 'disabled'}>✓ Finish &amp; call next</button>
+          <div class="row">
+            <button class="grow" id="finish">✓ Finish</button>
+            <button class="grow" id="recall">🔁 Call again</button>
+            <button class="grow danger" id="skip">No-show</button>
+          </div>
+        </div>` : `
+        <span class="small muted">No patient with you</span>
+        <h2 style="margin:6px 0 12px">${waiting.length ? `${waiting.length} patient${waiting.length > 1 ? 's' : ''} waiting` : 'Queue is empty'}</h2>
+        <button class="primary big block" id="callNext" ${waiting.length ? '' : 'disabled'}>📣 Call next patient${waiting.length ? ` (token ${waiting[0].token})` : ''}</button>`;
+      if (draft !== null) $('#notes').value = draft;
+
+      $('#stats').innerHTML = [
+        ['Waiting', waiting.length], ['Not arrived', booked], ['Seen', appts.filter((a) => a.status === 'done').length],
+      ].map(([l, n]) => `<div class="stat"><span class="small muted">${l}</span><b>${n}</b></div>`).join('');
+
+      $('#waitingRows').innerHTML = waiting.length ? waiting.map((a) => `<tr>
+        <td><span class="token-chip">${a.token}</span></td>
+        <td><b>${esc(a.patient.name)}</b><br><span class="small muted">${a.patient.age != null ? `${a.patient.age}y ` : ''}${esc(genderLabel(a.patient.gender))}${a.reason ? ` · ${esc(a.reason)}` : ''}</span></td>
+        <td class="small muted">${minutesSince(a.checkedInAt)}m</td>
+        <td><button class="sm" data-call="${a.id}">Call</button></td></tr>`).join('')
+        : '<tr><td colspan="4" class="empty">Nobody is waiting.</td></tr>';
+
+      $('#doneRows').innerHTML = seen.length ? seen.map((a) => `<tr>
+        <td><span class="token-chip">${a.token}</span></td>
+        <td>${esc(a.patient.name)}<br><span class="small muted">${fmtTime(a.completedAt)}</span></td>
+        <td>${badge(a.status)}</td>
+        <td class="small">${esc(a.notes)}</td></tr>`).join('')
+        : '<tr><td colspan="4" class="empty">No patients seen yet today.</td></tr>';
+    }
+
+    async function act(fn, okMsg) {
+      try { const r = await fn(); if (okMsg) toast(typeof okMsg === 'function' ? okMsg(r) : okMsg); }
+      catch (err) { toast(err.message, 'error'); }
+    }
+    const notes = () => ($('#notes') ? $('#notes').value : undefined);
+    const current = () => appts.find((a) => a.status === 'called');
+    const callNext = () => authed(`/api/doctors/${me.id}/next`, { method: 'POST' });
+
+    $('#current').addEventListener('click', (e) => {
+      const id = e.target.closest('button')?.id;
+      const c = current();
+      if (id === 'callNext') act(callNext, (a) => `Calling token ${a.token}`);
+      if (id === 'finishNext') act(async () => {
+        await authed(`/api/appointments/${c.id}/notes`, { method: 'POST', body: { notes: notes() } });
+        return callNext();
+      }, (a) => `Calling token ${a.token}`);
+      if (id === 'finish') act(() => authed(`/api/appointments/${c.id}/status`, { method: 'POST', body: { status: 'done', notes: notes() } }), 'Consultation finished');
+      if (id === 'skip' && confirm('Mark this patient as a no-show? Reception can re-queue them later.')) {
+        act(() => authed(`/api/appointments/${c.id}/status`, { method: 'POST', body: { status: 'skipped', notes: notes() } }), 'Marked as no-show');
+      }
+      if (id === 'recall') act(() => authed(`/api/doctors/${me.id}/recall`, { method: 'POST' }), 'Announced again');
+    });
+
+    $('#waitingRows').addEventListener('click', async (e) => {
+      const id = e.target.dataset.call;
+      if (!id) return;
+      const c = current();
+      act(async () => {
+        if (c) await authed(`/api/appointments/${c.id}/notes`, { method: 'POST', body: { notes: notes() } });
+        return authed(`/api/appointments/${id}/call`, { method: 'POST' });
+      }, (a) => `Calling token ${a.token}`);
+    });
+
+    let pending;
+    listen((ev) => {
+      if (ev.type !== 'update' || !me) return;
+      clearTimeout(pending);
+      pending = setTimeout(() => load().catch(() => {}), 150);
+    });
+
+    storage.get(KEY)
+      ? api('/api/me', { auth: KEY }).then((r) => (r.doctor ? showApp(r.doctor) : showLogin()), () => { storage.del(KEY); showLogin(); })
+      : showLogin();
+  </script>
+</body>
+</html>

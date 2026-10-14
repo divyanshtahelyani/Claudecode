@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Reception · Clinic Queue</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><span class="dot">+</span> Clinic Queue</a>
+    <span class="muted">Reception</span>
+    <span class="spacer"></span>
+    <a class="btn sm" href="/display" target="_blank">📺 Open display</a>
+    <button id="logoutBtn" class="sm hidden">Log out</button>
+  </header>
+
+  <!-- login -->
+  <main id="loginView" class="wrap narrow hidden">
+    <div class="card">
+      <h2>Reception login</h2>
+      <form id="loginForm">
+        <label for="pin">Reception PIN</label>
+        <input id="pin" type="password" inputmode="numeric" autocomplete="current-password" required>
+        <p></p>
+        <button class="primary block" type="submit">Log in</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- app -->
+  <main id="appView" class="wrap hidden">
+    <div class="tabs">
+      <button data-tab="queue" class="active">Today's queue</button>
+      <button data-tab="doctors">Doctors</button>
+    </div>
+
+    <section id="tab-queue" class="grid cols-2">
+      <div>
+        <div class="card">
+          <h2>Register walk-in</h2>
+          <form id="walkinForm">
+            <label for="w-name">Patient name</label>
+            <input id="w-name" name="name" required maxlength="80">
+            <label for="w-phone">Mobile number</label>
+            <input id="w-phone" name="phone" required inputmode="tel">
+            <div class="field-row">
+              <div><label for="w-age">Age</label><input id="w-age" name="age" type="number" min="0" max="130"></div>
+              <div><label for="w-gender">Gender</label>
+                <select id="w-gender" name="gender"><option value="">—</option><option value="F">Female</option><option value="M">Male</option><option value="O">Other</option></select>
+              </div>
+            </div>
+            <label for="w-doctor">Doctor</label>
+            <select id="w-doctor" name="doctorId" required></select>
+            <label for="w-reason">Reason</label>
+            <input id="w-reason" name="reason" maxlength="300">
+            <p></p>
+            <button class="primary block" type="submit">Add to queue &amp; give token</button>
+          </form>
+        </div>
+        <div class="card" id="nowServing"></div>
+      </div>
+
+      <div class="card">
+        <div class="row" style="margin-bottom:10px">
+          <h2 class="grow" style="margin:0">Appointments</h2>
+          <input id="q-date" type="date" style="width:auto">
+          <select id="q-doctor" style="width:auto"></select>
+          <select id="q-status" style="width:auto">
+            <option value="">All statuses</option>
+            <option value="active" selected>Active (booked / waiting / called)</option>
+            <option value="booked">Booked (not arrived)</option><option value="waiting">Waiting</option>
+            <option value="called">Called</option><option value="done">Done</option>
+            <option value="skipped">Skipped</option><option value="cancelled">Cancelled</option>
+          </select>
+          <input id="q-search" placeholder="Search name / phone / token" style="width:auto">
+        </div>
+        <div class="stats" id="stats" style="margin-bottom:12px"></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Token</th><th>Patient</th><th>Doctor</th><th>Status</th><th>Time</th><th></th></tr></thead>
+            <tbody id="apptRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-doctors" class="grid cols-2 hidden">
+      <div class="card">
+        <h2>Add doctor</h2>
+        <form id="doctorForm">
+          <label for="d-name">Name</label>
+          <input id="d-name" name="name" required placeholder="Dr. ..." maxlength="80">
+          <label for="d-spec">Specialty</label>
+          <input id="d-spec" name="specialty" maxlength="80">
+          <div class="field-row">
+            <div><label for="d-room">Room</label><input id="d-room" name="room" maxlength="20"></div>
+            <div><label for="d-avg">Avg. minutes / patient</label><input id="d-avg" name="avgMinutes" type="number" min="1" max="120" value="10"></div>
+          </div>
+          <label for="d-pin">Login PIN (4–12 digits)</label>
+          <input id="d-pin" name="pin" required inputmode="numeric" pattern="\d{4,12}">
+          <p></p>
+          <button class="primary block" type="submit">Add doctor</button>
+        </form>
+      </div>
+      <div class="card">
+        <h2>Doctors</h2>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Name</th><th>Specialty</th><th>Room</th><th>Avg</th><th>Status</th><th></th></tr></thead>
+            <tbody id="doctorRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/common.js"></script>
+  <script>
+    const KEY = 'receptionToken';
+    let doctors = [];
+    let appts = [];
+
+    const authed = (path, opts = {}) => api(path, { ...opts, auth: KEY }).catch((err) => {
+      if (err.status === 401) { storage.del(KEY); showLogin(); }
+      throw err;
+    });
+
+    function showLogin() {
+      $('#loginView').classList.remove('hidden');
+      $('#appView').classList.add('hidden');
+      $('#logoutBtn').classList.add('hidden');
+    }
+    async function showApp() {
+      $('#loginView').classList.add('hidden');
+      $('#appView').classList.remove('hidden');
+      $('#logoutBtn').classList.remove('hidden');
+      await refreshAll();
+    }
+
+    $('#loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const r = await api('/api/login', { method: 'POST', body: { role: 'reception', pin: $('#pin').value } });
+        storage.set(KEY, r.token);
+        $('#pin').value = '';
+        showApp();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    setupLogout($('#logoutBtn'), KEY, showLogin);
+
+    $$('.tabs button').forEach((b) => b.addEventListener('click', () => {
+      $$('.tabs button').forEach((x) => x.classList.toggle('active', x === b));
+      $('#tab-queue').classList.toggle('hidden', b.dataset.tab !== 'queue');
+      $('#tab-doctors').classList.toggle('hidden', b.dataset.tab !== 'doctors');
+    }));
+
+    // ---- data ----
+    async function refreshAll() {
+      doctors = await authed('/api/admin/doctors');
+      renderDoctorSelects();
+      renderDoctors();
+      await Promise.all([loadAppts(), loadNowServing()]);
+    }
+
+    function renderDoctorSelects() {
+      const active = doctors.filter((d) => d.active);
+      const w = $('#w-doctor');
+      const keepW = w.value;
+      w.innerHTML = active.map((d) => `<option value="${d.id}">${esc(d.name)}${d.room ? ` · Room ${esc(d.room)}` : ''}</option>`).join('');
+      if (keepW) w.value = keepW;
+      const f = $('#q-doctor');
+      const keepF = f.value;
+      f.innerHTML = '<option value="">All doctors</option>' + doctors.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('');
+      f.value = keepF;
+    }
+
+    async function loadAppts() {
+      const date = $('#q-date').value || todayStr();
+      appts = await authed(`/api/appointments?date=${date}`);
+      renderAppts();
+    }
+
+    function renderAppts() {
+      const doctorId = Number($('#q-doctor').value) || null;
+      const status = $('#q-status').value;
+      const q = $('#q-search').value.trim().toLowerCase();
+      const isToday = ($('#q-date').value || todayStr()) === todayStr();
+      const scoped = appts.filter((a) => !doctorId || a.doctor.id === doctorId);
+
+      const count = (s) => scoped.filter((a) => a.status === s).length;
+      $('#stats').innerHTML = [
+        ['Booked', count('booked')], ['Waiting', count('waiting')], ['With doctor', count('called')],
+        ['Done', count('done')], ['Skipped / cancelled', count('skipped') + count('cancelled')],
+      ].map(([l, n]) => `<div class="stat"><span class="small muted">${l}</span><b>${n}</b></div>`).join('');
+
+      const rows = scoped.filter((a) =>
+        (!status || (status === 'active' ? ['booked', 'waiting', 'called'].includes(a.status) : a.status === status)) &&
+        (!q || a.patient.name.toLowerCase().includes(q) || a.patient.phone.includes(q) || String(a.token) === q));
+
+      $('#apptRows').innerHTML = rows.length ? rows.map((a) => {
+        const actions = [];
+        if (isToday && a.status === 'booked') actions.push(`<button class="sm primary" data-act="waiting" data-id="${a.id}">Check in</button>`);
+        if (isToday && ['waiting', 'skipped'].includes(a.status)) actions.push(`<button class="sm" data-act="call" data-id="${a.id}">Call now</button>`);
+        if (a.status === 'called') actions.push(`<button class="sm" data-act="done" data-id="${a.id}">Done</button>`, `<button class="sm" data-act="skipped" data-id="${a.id}">No-show</button>`);
+        if (a.status === 'skipped') actions.push(`<button class="sm" data-act="waiting" data-id="${a.id}">Re-queue</button>`);
+        if (['booked', 'waiting', 'skipped'].includes(a.status)) actions.push(`<button class="sm danger" data-act="cancelled" data-id="${a.id}">Cancel</button>`);
+        const time = a.status === 'called' ? `called ${fmtTime(a.calledAt)}`
+          : a.status === 'waiting' ? `waiting ${minutesSince(a.checkedInAt)}m`
+          : a.completedAt ? fmtTime(a.completedAt) : (a.source === 'online' ? 'online' : 'walk-in');
+        return `<tr class="${a.status === 'called' ? 'is-called' : ''}">
+          <td><span class="token-chip">${a.token}</span></td>
+          <td><b>${esc(a.patient.name)}</b><br><span class="small muted">${esc(a.patient.phone)}${a.patient.age != null ? ` · ${a.patient.age}y` : ''} ${esc(genderLabel(a.patient.gender))}${a.reason ? ` · ${esc(a.reason)}` : ''}</span></td>
+          <td>${esc(a.doctor.name)}</td>
+          <td>${badge(a.status)}</td>
+          <td class="small muted">${esc(time)}</td>
+          <td><div class="row">${actions.join('')}</div></td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="6" class="empty">No appointments match.</td></tr>';
+    }
+
+    async function loadNowServing() {
+      const { doctors: b } = await api('/api/board');
+      $('#nowServing').innerHTML = '<h2>Now serving</h2>' + (b.length ? b.map((x) => `
+        <div class="row" style="padding:8px 0;border-top:1px solid var(--line)">
+          <span class="token-chip">${x.nowServing ?? '—'}</span>
+          <div class="grow"><b>${esc(x.doctor.name)}</b><br><span class="small muted">${x.waiting} waiting · ${x.booked} not arrived</span></div>
+          <button class="sm" data-next="${x.doctor.id}" ${x.waiting ? '' : 'disabled'}>Call next</button>
+          <button class="sm" data-recall="${x.doctor.id}" ${x.nowServing ? '' : 'disabled'} title="Announce again">🔁</button>
+        </div>`).join('') : '<p class="muted">No active doctors.</p>');
+    }
+
+    // ---- actions ----
+    $('#apptRows').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button[data-act]');
+      if (!btn) return;
+      const { act, id } = btn.dataset;
+      if (act === 'cancelled' && !confirm('Cancel this appointment?')) return;
+      btn.disabled = true;
+      try {
+        if (act === 'call') await authed(`/api/appointments/${id}/call`, { method: 'POST' });
+        else await authed(`/api/appointments/${id}/status`, { method: 'POST', body: { status: act } });
+      } catch (err) { toast(err.message, 'error'); btn.disabled = false; }
+    });
+
+    $('#nowServing').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      try {
+        if (btn.dataset.next) {
+          const a = await authed(`/api/doctors/${btn.dataset.next}/next`, { method: 'POST' });
+          toast(`Called token ${a.token} — ${a.patient.name}`);
+        } else if (btn.dataset.recall) {
+          await authed(`/api/doctors/${btn.dataset.recall}/recall`, { method: 'POST' });
+          toast('Announced again');
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    $('#walkinForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const form = e.target;
+      const body = Object.fromEntries(new FormData(form));
+      try {
+        const a = await authed('/api/walkin', { method: 'POST', body });
+        toast(`Token ${a.token} given to ${a.patient.name} for ${a.doctor.name}`);
+        const doc = form.doctorId.value;
+        form.reset();
+        form.doctorId.value = doc;
+        form.name.focus();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    // ---- doctors tab ----
+    function renderDoctors() {
+      $('#doctorRows').innerHTML = doctors.map((d) => `<tr>
+        <td><b>${esc(d.name)}</b></td><td>${esc(d.specialty)}</td><td>${esc(d.room)}</td><td>${d.avgMinutes}m</td>
+        <td>${d.active ? '<span class="badge s-done">active</span>' : '<span class="badge s-cancelled">off</span>'}</td>
+        <td><div class="row">
+          <button class="sm" data-toggle="${d.id}">${d.active ? 'Deactivate' : 'Activate'}</button>
+          <button class="sm" data-pin="${d.id}">Reset PIN</button>
+        </div></td></tr>`).join('');
+    }
+    $('#doctorRows').addEventListener('click', async (e) => {
+      const btn = e.target.closest('button');
+      if (!btn) return;
+      try {
+        if (btn.dataset.toggle) {
+          const d = doctors.find((x) => x.id === Number(btn.dataset.toggle));
+          await authed(`/api/admin/doctors/${d.id}`, { method: 'PATCH', body: { active: !d.active } });
+        } else if (btn.dataset.pin) {
+          const pin = prompt('New PIN (4–12 digits):');
+          if (!pin) return;
+          await authed(`/api/admin/doctors/${btn.dataset.pin}`, { method: 'PATCH', body: { pin } });
+          toast('PIN updated');
+        }
+      } catch (err) { toast(err.message, 'error'); }
+    });
+    $('#doctorForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      try {
+        const d = await authed('/api/admin/doctors', { method: 'POST', body: Object.fromEntries(new FormData(e.target)) });
+        toast(`${d.name} added`);
+        e.target.reset();
+      } catch (err) { toast(err.message, 'error'); }
+    });
+
+    // ---- filters & live ----
+    $('#q-date').value = todayStr();
+    $('#q-date').addEventListener('change', () => loadAppts().catch(() => {}));
+    ['#q-doctor', '#q-status'].forEach((s) => $(s).addEventListener('change', renderAppts));
+    $('#q-search').addEventListener('input', renderAppts);
+
+    let pending;
+    listen((ev) => {
+      if (ev.type !== 'update' || !storage.get(KEY)) return;
+      clearTimeout(pending);
+      pending = setTimeout(() => refreshAll().catch(() => {}), 150);
+    });
+    setInterval(() => { if (storage.get(KEY)) renderAppts(); }, 60e3); // keep "waiting Xm" fresh
+
+    storage.get(KEY) ? api('/api/me', { auth: KEY }).then(showApp, () => { storage.del(KEY); showLogin(); }) : showLogin();
+  </script>
+</body>
+</html>
