@@ -35,20 +35,10 @@ function pinMatches(given, expected) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-// ---------- live updates ----------
-const clients = new Set();
-function broadcast(event) {
-  const line = `data: ${JSON.stringify(event)}\n\n`;
-  for (const res of clients) res.write(line);
-}
-setInterval(() => { for (const res of clients) res.write(': ping\n\n'); }, 25e3).unref();
-
+// ---------- calling patients ----------
+// Screens refresh every few seconds and pick up new calls from the call log (GET /api/calls).
 function announceCall(a, { recall = false } = {}) {
-  broadcast({
-    type: 'call', recall, appointmentId: a.id, token: a.token,
-    doctorId: a.doctor.id, doctorName: a.doctor.name, room: a.doctor.room,
-  });
-  broadcast({ type: 'update' });
+  store.logCall(a.id, recall);
   if (!recall) {
     notify.patientCalled(a);
     const next = store.claimNextUpForNotice(a.doctor.id, a.date);
@@ -118,10 +108,17 @@ const route = (method, pattern, handler) =>
 route('GET', '/api/doctors', () => store.listDoctors());
 route('GET', '/api/board', (ctx) => ({ date: cleanDate(ctx.query.get('date')), doctors: store.board(cleanDate(ctx.query.get('date'))) }));
 
+// Without `after`, returns only the latest id so a screen that just opened doesn't replay old calls.
+route('GET', '/api/calls', (ctx) => {
+  const after = ctx.query.get('after');
+  if (after === null) return { lastId: store.lastCallId(), calls: [] };
+  const calls = store.callsAfter(Number(after) || 0);
+  return { lastId: calls.length ? calls[calls.length - 1].id : Number(after) || 0, calls };
+});
+
 route('POST', '/api/book', (ctx) => {
   const p = patientFields(ctx.body);
   const a = store.createAppointment({ ...p, date: bookingDate(ctx.body.date), source: 'online' });
-  broadcast({ type: 'update' });
   return { id: a.id, token: a.token, date: a.date, status: a.status, doctor: a.doctor };
 });
 
@@ -132,7 +129,6 @@ route('POST', '/api/my/:id/cancel', (ctx) => {
   if (!a || a.patient.phone !== cleanPhone(ctx.body.phone)) throw new AppError(404, 'Appointment not found');
   if (!['booked', 'waiting'].includes(a.status)) throw new AppError(400, 'This appointment can no longer be cancelled');
   store.setStatus(a.id, 'cancelled');
-  broadcast({ type: 'update' });
   return { ok: true };
 });
 
@@ -168,7 +164,6 @@ route('POST', '/api/walkin', (ctx) => {
   requireReception(ctx);
   const p = patientFields(ctx.body);
   const a = store.createAppointment({ ...p, date: store.today(), source: 'walkin' });
-  broadcast({ type: 'update' });
   return a;
 });
 
@@ -178,7 +173,6 @@ route('POST', '/api/appointments/:id/status', (ctx) => {
   if (!current) throw new AppError(404, 'Appointment not found');
   requireDoctorAccess(ctx, current.doctor.id);
   const a = store.setStatus(id, str(ctx.body.status, 20), { notes: ctx.body.notes == null ? undefined : str(ctx.body.notes, 2000) });
-  broadcast({ type: 'update' });
   return a;
 });
 
@@ -235,7 +229,6 @@ route('POST', '/api/admin/doctors', (ctx) => {
     name, pin, specialty: str(ctx.body.specialty, 80), room: str(ctx.body.room, 20),
     avgMinutes: Math.min(120, Math.max(1, Number(ctx.body.avgMinutes) || 10)),
   });
-  broadcast({ type: 'update' });
   return d;
 });
 route('PATCH', '/api/admin/doctors/:id', (ctx) => {
@@ -250,7 +243,6 @@ route('PATCH', '/api/admin/doctors/:id', (ctx) => {
     avgMinutes: b.avgMinutes != null ? Math.min(120, Math.max(1, Number(b.avgMinutes) || 10)) : undefined,
     active: b.active,
   });
-  broadcast({ type: 'update' });
   return d;
 });
 
@@ -284,17 +276,42 @@ function sendJson(res, status, data) {
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon', '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
 };
 
+// The three parts can live on their own web addresses, all sharing this server and database, e.g.
+//   PATIENT_HOST=book.myclinic.com  DISPLAY_HOST=display.myclinic.com  STAFF_HOST=staff.myclinic.com
+// On such an address "/" opens that part and the other parts' pages are hidden.
+// Any other address (e.g. localhost) shows everything, with a menu at "/".
+const SITES = {
+  patient: { home: 'patient', pages: ['patient'] },
+  display: { home: 'display', pages: ['display'] },
+  staff: { home: 'staff', pages: ['staff', 'reception', 'doctor'] },
+};
+const hostList = (v) => String(v || '').split(',').map((h) => h.trim().toLowerCase()).filter(Boolean);
+const SITE_BY_HOST = new Map([
+  ...hostList(process.env.PATIENT_HOST).map((h) => [h, SITES.patient]),
+  ...hostList(process.env.DISPLAY_HOST).map((h) => [h, SITES.display]),
+  ...hostList(process.env.STAFF_HOST).map((h) => [h, SITES.staff]),
+]);
+const ALL_PAGES = ['index', 'patient', 'display', 'staff', 'reception', 'doctor'];
+
 function serveStatic(req, res, pathname) {
+  const host = String(req.headers.host || '').toLowerCase().replace(/:\d+$/, '');
+  const site = SITE_BY_HOST.get(host);
   let rel = decodeURIComponent(pathname);
-  if (rel === '/') rel = '/index.html';
-  else if (!path.extname(rel)) rel += '.html'; // /doctor -> doctor.html
+  if (rel === '/') rel = `/${site ? site.home : 'index'}`;
+  if (!path.extname(rel)) rel += '.html'; // /doctor -> doctor.html
+  const page = path.basename(rel, '.html');
+  if (rel.endsWith('.html') && ALL_PAGES.includes(page) && site && !site.pages.includes(page)) {
+    res.writeHead(302, { Location: '/' });
+    return res.end();
+  }
   const file = path.normalize(path.join(PUBLIC_DIR, rel));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) { res.writeHead(403); return res.end('Forbidden'); }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain' }); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
 }
@@ -302,14 +319,6 @@ function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   const { pathname } = url;
-
-  if (pathname === '/api/events' && req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', Connection: 'keep-alive' });
-    res.write('retry: 3000\n\n');
-    clients.add(res);
-    req.on('close', () => clients.delete(res));
-    return;
-  }
 
   if (!pathname.startsWith('/api/')) {
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
@@ -340,10 +349,9 @@ if (require.main === module) {
   }
   server.listen(PORT, () => {
     console.log(`Clinic queue running on http://localhost:${PORT}`);
-    console.log(`  Patient:   http://localhost:${PORT}/patient`);
-    console.log(`  Reception: http://localhost:${PORT}/reception   (PIN ${process.env.RECEPTION_PIN ? 'from RECEPTION_PIN' : '1234'})`);
-    console.log(`  Doctor:    http://localhost:${PORT}/doctor`);
-    console.log(`  Display:   http://localhost:${PORT}/display     (TV in the waiting room)`);
+    console.log(`  Patient website:  http://localhost:${PORT}/patient`);
+    console.log(`  Display website:  http://localhost:${PORT}/display     (TV in the waiting room)`);
+    console.log(`  Staff app:        http://localhost:${PORT}/staff       (reception PIN ${process.env.RECEPTION_PIN ? 'from RECEPTION_PIN' : '1234'})`);
     console.log(`  SMS:       ${notify.enabled ? 'Twilio enabled' : 'off (set TWILIO_* to enable)'}`);
   });
 }

@@ -20,11 +20,29 @@ async function api(path, { method = 'GET', body, auth } = {}) {
   return data;
 }
 
-// Live updates from the server; EventSource reconnects on its own.
-function listen(onEvent) {
-  const es = new EventSource('/api/events');
-  es.onmessage = (e) => { try { onEvent(JSON.parse(e.data)); } catch { /* ignore */ } };
-  return es;
+// Every screen refreshes on this interval to pick up changes made by anyone else.
+const REFRESH_MS = 5000;
+
+// Run `fn` now and then every 5 seconds. A refresh is skipped while the previous one is still running.
+function every5s(fn) {
+  let busy = false;
+  const run = async () => {
+    if (busy) return;
+    busy = true;
+    try { await fn(); } catch { /* try again next time */ } finally { busy = false; }
+  };
+  run();
+  return setInterval(run, REFRESH_MS);
+}
+
+// Calls `onCall(call)` for each patient called after this screen opened (checked every 5 seconds).
+function watchCalls(onCall) {
+  let lastId = null;
+  return every5s(async () => {
+    const r = await api(lastId === null ? '/api/calls' : `/api/calls?after=${lastId}`);
+    lastId = r.lastId;
+    r.calls.forEach(onCall);
+  });
 }
 
 const $ = (sel, root = document) => root.querySelector(sel);

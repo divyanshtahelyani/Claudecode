@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Patient · Clinic Queue</title>
+  <link rel="icon" href="/favicon.png">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><span class="dot">+</span> Clinic Queue</a>
+    <a class="brand" href="/patient"><span class="dot">+</span> Clinic Queue</a>
     <span class="muted">Patient</span>
   </header>
 
@@ -201,16 +202,15 @@
     }
     $('#ta-ok').addEventListener('click', () => $('#turnAlert').classList.add('hidden'));
 
-    listen((ev) => {
-      if (ev.type === 'call' && myIds.has(ev.appointmentId)) yourTurn(ev);
-      if (ev.type === 'update') {
-        if (!$('#tab-mine').classList.contains('hidden')) loadMine();
-        loadDoctors().catch(() => {});
-      }
-    });
-
     loadDoctors().catch((err) => toast(err.message, 'error'));
     if (savedPhone) loadMine();
+
+    // Refresh every 5 seconds, without disturbing a field the patient is using right now.
+    setInterval(() => {
+      if (document.activeElement !== $('#b-doctor')) loadDoctors().catch(() => {});
+      if (document.activeElement !== $('#m-phone') && $('#m-phone').value.trim()) loadMine();
+    }, REFRESH_MS);
+    watchCalls((c) => { if (myIds.has(c.appointmentId)) yourTurn(c); });
   </script>
 </body>
 </html>

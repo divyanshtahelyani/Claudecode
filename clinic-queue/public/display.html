@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Now Serving · Clinic Queue</title>
+  <link rel="icon" href="/favicon.png">
   <link rel="stylesheet" href="/style.css">
   <style>
     body { min-height: 100vh; }
@@ -78,12 +79,8 @@
     tick();
     setInterval(tick, 10e3);
 
-    listen((ev) => {
-      if (ev.type === 'call') onCall(ev);
-      else if (ev.type === 'update') load().catch(() => {});
-    });
-    load().catch(() => {});
-    setInterval(() => load().catch(() => {}), 60e3); // also covers the day rolling over
+    every5s(load);       // refresh the boards every 5 seconds
+    watchCalls(onCall);  // announce every new call (checked every 5 seconds)
   </script>
 </body>
 </html>

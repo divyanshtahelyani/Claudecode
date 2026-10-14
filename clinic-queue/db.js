@@ -48,6 +48,13 @@ CREATE TABLE IF NOT EXISTS appointments (
   completed_at   TEXT,
   UNIQUE (doctor_id, date, token)
 );
+-- Every time a patient is called (or called again). Screens poll this to know what to announce.
+CREATE TABLE IF NOT EXISTS calls (
+  id             INTEGER PRIMARY KEY,
+  appointment_id INTEGER NOT NULL REFERENCES appointments(id),
+  recall         INTEGER NOT NULL DEFAULT 0,
+  created_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
 CREATE INDEX IF NOT EXISTS idx_appt_day ON appointments(date, doctor_id, status);
 CREATE INDEX IF NOT EXISTS idx_patient_phone ON patients(phone);
 `);
@@ -275,6 +282,21 @@ function claimNextUpForNotice(doctorId, date) {
   return changed ? getAppointment(r.id) : null;
 }
 
+// ---------- call log ----------
+function logCall(appointmentId, recall = false) {
+  db.prepare('INSERT INTO calls (appointment_id, recall) VALUES (?, ?)').run(appointmentId, recall ? 1 : 0);
+}
+const lastCallId = () => db.prepare('SELECT COALESCE(MAX(id), 0) AS id FROM calls').get().id;
+
+// Calls made after `afterId` (oldest first). Token numbers and doctor only, never patient names.
+function callsAfter(afterId) {
+  return db.prepare(`SELECT c.id, c.recall, a.id AS appointment_id, a.token, d.id AS doctor_id, d.name AS doctor_name, d.room
+                     FROM calls c JOIN appointments a ON a.id = c.appointment_id JOIN doctors d ON d.id = a.doctor_id
+                     WHERE c.id > ? ORDER BY c.id LIMIT 50`).all(afterId)
+    .map((r) => ({ id: r.id, recall: !!r.recall, appointmentId: r.appointment_id, token: r.token,
+      doctorId: r.doctor_id, doctorName: r.doctor_name, room: r.room }));
+}
+
 // Public waiting-room board: token numbers only, never names.
 function board(date = today()) {
   return listDoctors().map((d) => {
@@ -302,4 +324,5 @@ module.exports = {
   listDoctors, getDoctor, addDoctor, updateDoctor, checkDoctorPin,
   createAppointment, listAppointments, getAppointment, appointmentsByPhone,
   setStatus, saveNotes, call, currentPatient, claimNextUpForNotice, board, seedIfEmpty,
+  logCall, lastCallId, callsAfter,
 };

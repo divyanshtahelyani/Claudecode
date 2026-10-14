@@ -1,6 +1,8 @@
 'use strict';
 process.env.DB_PATH = ':memory:';
 process.env.RECEPTION_PIN = '9999';
+process.env.PATIENT_HOST = 'book.clinic.test';
+process.env.STAFF_HOST = 'staff.clinic.test';
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -62,6 +64,9 @@ test('full patient → reception → doctor flow', async () => {
   const other = doctors.find((d) => d.id !== doc.id);
   assert.equal((await call('POST', `/api/doctors/${other.id}/next`, {}, dr)).status, 403);
 
+  // A screen that opens now gets the latest call id, so old calls aren't replayed
+  const { lastId: startId } = (await call('GET', '/api/calls')).data;
+
   // Call next: Asha is only booked (not checked in), so Bilal (waiting) is called
   const n1 = await call('POST', `/api/doctors/${doc.id}/next`, {}, dr);
   assert.equal(n1.data.token, 2);
@@ -72,6 +77,14 @@ test('full patient → reception → doctor flow', async () => {
   await call('POST', `/api/appointments/${n1.data.id}/notes`, { notes: 'Paracetamol 500mg' }, dr);
   const n2 = await call('POST', `/api/doctors/${doc.id}/next`, {}, dr);
   assert.equal(n2.data.token, 1);
+
+  // Both calls are in the call log (token and doctor only, no names); "call again" adds another entry
+  await call('POST', `/api/doctors/${doc.id}/recall`, {}, dr);
+  const log = (await call('GET', `/api/calls?after=${startId}`)).data;
+  assert.deepEqual(log.calls.map((c) => [c.token, c.recall]), [[2, false], [1, false], [1, true]]);
+  assert.equal(log.calls[0].doctorName, doc.name);
+  assert.ok(!JSON.stringify(log).includes('Bilal'));
+  assert.deepEqual((await call('GET', `/api/calls?after=${log.lastId}`)).data, { lastId: log.lastId, calls: [] });
 
   const list = (await call('GET', '/api/appointments', undefined, dr)).data;
   const bilal = list.find((a) => a.token === 2);
@@ -103,8 +116,27 @@ test('patient can cancel only with matching phone', async () => {
 });
 
 test('static pages are served and traversal is blocked', async () => {
-  for (const p of ['/', '/patient', '/reception', '/doctor', '/display', '/common.js']) {
+  for (const p of ['/', '/patient', '/staff', '/reception', '/doctor', '/display', '/common.js', '/staff.webmanifest', '/sw.js', '/icon-512.png']) {
     assert.equal((await fetch(base + p)).status, 200, p);
   }
   assert.notEqual((await fetch(base + '/%2e%2e/server.js')).status, 200);
+});
+
+test('each web address only opens its own part', async () => {
+  const get = (host, p) => new Promise((resolve) => {
+    require('node:http').get({ host: '127.0.0.1', port: server.address().port, path: p, headers: { Host: host } }, (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => resolve({ status: res.statusCode, location: res.headers.location, body }));
+    });
+  });
+  assert.match((await get('book.clinic.test', '/')).body, /<title>Patient/);
+  assert.equal((await get('book.clinic.test', '/reception')).status, 302);
+  assert.equal((await get('book.clinic.test', '/display')).status, 302);
+  assert.match((await get('staff.clinic.test', '/')).body, /<title>Clinic Staff/);
+  assert.equal((await get('staff.clinic.test', '/doctor')).status, 200);
+  assert.equal((await get('staff.clinic.test', '/patient')).status, 302);
+  assert.equal((await get('staff.clinic.test', '/staff.webmanifest')).status, 200);
+  // The API works on every address (one shared database)
+  assert.equal((await get('book.clinic.test', '/api/doctors')).status, 200);
 });

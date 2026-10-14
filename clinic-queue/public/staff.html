@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Clinic Staff</title>
+  <link rel="manifest" href="/staff.webmanifest">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/staff"><span class="dot">+</span> Clinic Staff</a>
+    <span class="spacer"></span>
+    <button id="installBtn" class="sm primary hidden">⬇ Install app</button>
+  </header>
+  <main class="wrap narrow">
+    <h1>Who is using this device?</h1>
+    <p class="muted">You'll stay logged in on this device until you log out.</p>
+    <div class="portal" style="grid-template-columns:1fr 1fr">
+      <a href="/reception"><div class="card">
+        <div class="icon">🗂️</div>
+        <h2>Reception</h2>
+        <p class="muted small">Walk-ins, check-in, all queues, doctors</p>
+      </div></a>
+      <a href="/doctor"><div class="card">
+        <div class="icon">🩺</div>
+        <h2>Doctor</h2>
+        <p class="muted small">My queue, call next, notes</p>
+      </div></a>
+    </div>
+
+    <div class="card" id="installHelp" style="margin-top:16px">
+      <h2>Install as an app</h2>
+      <ul class="small" style="margin:0;padding-left:18px">
+        <li><b>Windows / Mac (Chrome or Edge):</b> click <b>⬇ Install app</b> above, or the install icon at the right end of the address bar.</li>
+        <li><b>Android (Chrome):</b> tap <b>⋮</b> → <b>Install app</b> / <b>Add to Home screen</b>.</li>
+        <li><b>iPhone / iPad (Safari):</b> tap <b>Share</b> → <b>Add to Home Screen</b>.</li>
+      </ul>
+      <p class="small muted" style="margin:8px 0 0">It then opens from its own icon in its own window, like any other app.</p>
+    </div>
+  </main>
+  <script src="/common.js"></script>
+  <script src="/staff-app.js"></script>
+</body>
+</html>

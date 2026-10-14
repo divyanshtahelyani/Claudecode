@@ -4,14 +4,17 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reception · Clinic Queue</title>
+  <link rel="manifest" href="/staff.webmanifest">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><span class="dot">+</span> Clinic Queue</a>
+    <a class="brand" href="/staff"><span class="dot">+</span> Clinic Staff</a>
     <span class="muted">Reception</span>
     <span class="spacer"></span>
-    <a class="btn sm" href="/display" target="_blank">📺 Open display</a>
     <button id="logoutBtn" class="sm hidden">Log out</button>
   </header>
 
@@ -116,6 +119,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/staff-app.js"></script>
   <script>
     const KEY = 'receptionToken';
     let doctors = [];
@@ -164,6 +168,8 @@
     }
 
     function renderDoctorSelects() {
+      // Don't rebuild a dropdown while someone has it open.
+      if ([$('#w-doctor'), $('#q-doctor')].includes(document.activeElement)) return;
       const active = doctors.filter((d) => d.active);
       const w = $('#w-doctor');
       const keepW = w.value;
@@ -311,13 +317,10 @@
     ['#q-doctor', '#q-status'].forEach((s) => $(s).addEventListener('change', renderAppts));
     $('#q-search').addEventListener('input', renderAppts);
 
-    let pending;
-    listen((ev) => {
-      if (ev.type !== 'update' || !storage.get(KEY)) return;
-      clearTimeout(pending);
-      pending = setTimeout(() => refreshAll().catch(() => {}), 150);
-    });
-    setInterval(() => { if (storage.get(KEY)) renderAppts(); }, 60e3); // keep "waiting Xm" fresh
+    // Refresh every 5 seconds to show changes made by doctors, patients and other reception PCs.
+    setInterval(() => {
+      if (!$('#appView').classList.contains('hidden')) refreshAll().catch(() => {});
+    }, REFRESH_MS);
 
     storage.get(KEY) ? api('/api/me', { auth: KEY }).then(showApp, () => { storage.del(KEY); showLogin(); }) : showLogin();
   </script>

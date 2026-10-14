@@ -4,11 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Doctor · Clinic Queue</title>
+  <link rel="manifest" href="/staff.webmanifest">
+  <meta name="theme-color" content="#0f766e">
+  <link rel="icon" href="/favicon.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <header class="topbar">
-    <a class="brand" href="/"><span class="dot">+</span> Clinic Queue</a>
+    <a class="brand" href="/staff"><span class="dot">+</span> Clinic Staff</a>
     <span class="muted" id="whoami">Doctor</span>
     <span class="spacer"></span>
     <button id="logoutBtn" class="sm hidden">Log out</button>
@@ -60,6 +64,7 @@
   </main>
 
   <script src="/common.js"></script>
+  <script src="/staff-app.js"></script>
   <script>
     const KEY = 'doctorToken';
     let me = null;
@@ -192,12 +197,8 @@
       }, (a) => `Calling token ${a.token}`);
     });
 
-    let pending;
-    listen((ev) => {
-      if (ev.type !== 'update' || !me) return;
-      clearTimeout(pending);
-      pending = setTimeout(() => load().catch(() => {}), 150);
-    });
+    // Refresh every 5 seconds to show patients added or checked in by reception.
+    setInterval(() => { if (me) load().catch(() => {}); }, REFRESH_MS);
 
     storage.get(KEY)
       ? api('/api/me', { auth: KEY }).then((r) => (r.doctor ? showApp(r.doctor) : showLogin()), () => { storage.del(KEY); showLogin(); })
