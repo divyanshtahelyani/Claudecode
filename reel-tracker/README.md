@@ -1,19 +1,16 @@
-# Reel Tracker
+# Team Reel Tracker
 
-A shared checklist for the 21 Oct – 19 Nov 2026 reel plan across VIBE, 999 Store, Lucknowi Mahal and Aarti Boutique.
-It holds 363 scripts: 123 for the owner and 240 for the team.
+The team's reels for VIBE, 999 Store, Lucknowi Mahal and Aarti Boutique: 2 per store per day.
 
-- `index.html`: the whole app (no build step).
-- `data/month.json`: every script (shots, lines, captions, camera, edit notes).
-- Status is stored in Supabase (project **the-register**, table `public.reel_status`).
-  Changes go through `public.reel_update(…)`. Anyone with the link can tick reels.
+- `index.html`: the whole app (no build step, no login).
+- `data/month.json`: 240 scripts for 21 Oct – 19 Nov 2026 (shots, lines, captions, camera, edit notes).
+- Status is saved in Supabase (project **the-register**, table `public.reel_status`) through `public.reel_update(…)`.
+  Anyone with the link can tick reels, so share it only with the team.
 
-## Put it on Netlify (one time)
+## Put it online
 
-1. Go to app.netlify.com → **Add new site** → **Import an existing project** → GitHub.
-2. Pick the `Claudecode` repo and the `claude/adoring-keller-t4htoj` branch (or `main` after merging).
-3. Set **Base directory** to `reel-tracker` and leave the build command empty. `netlify.toml` sets the publish folder.
-4. Deploy. Every new push to that branch redeploys the site.
+Drag `reel-tracker.zip` onto **app.netlify.com/drop**. To update an existing site, drop the new zip on that site's **Deploys** page.
+Or connect Netlify to this repo with **Base directory** set to `reel-tracker`.
 
 ## Statuses
 

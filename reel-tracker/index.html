@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Reel Tracker · Bilaspur Stores</title>
+<title>Team Reel Tracker</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Mukta:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
 <style>
@@ -42,10 +42,6 @@ button{cursor:pointer}
 .btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:.88rem}
 .btn.primary{background:var(--plum);border-color:var(--plum);color:#fff}
 .sync{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
-/* gate */
-.gate{max-width:420px;margin:12vh auto 0;padding:24px;background:var(--surface);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;gap:14px}
-.gate label{display:flex;flex-direction:column;gap:4px;font-size:.85rem;color:var(--muted)}
-.gate input,.gate select{padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:1rem}
 .err{color:var(--late);font-size:.88rem;min-height:1.2em}
 /* progress */
 .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
@@ -114,15 +110,15 @@ ul.ck{margin:0;padding-left:18px}
 // ---- config: Supabase project "the-register", table reel_status, saved via rpc reel_update ----
 const SB_URL = 'https://vrpfbdazgvadgkpfwpyr.supabase.co';
 const SB_KEY = 'sb_publishable_GX5lGoAsjEgVSEXKDtQ2tg_dnqTi19a';
+const SITE = {"heading": "Team Reel Tracker", "sub": "2 reels a day for each store", "me": {"name": "Team"}};
 const STATES = [['todo','To do'],['shot','Shot'],['edited','Edited'],['posted','Posted']];
 const NAME = {'999':'999 Store','vibe':'VIBE','lm':'Lucknowi Mahal','aarti':'Aarti Boutique'};
-const PEOPLE = ['Owner','Model-reel person','Editor','Aarti staff','Other'];
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const store = { get(k){ try { return JSON.parse(localStorage.getItem('rt_'+k)); } catch(_) { return null; } },
                 set(k,v){ try { localStorage.setItem('rt_'+k, JSON.stringify(v)); } catch(_) {} } };
-let REELS = [], STATUS = {}, me = store.get('me'), lastSync = null, busy = new Set();
+let REELS = [], STATUS = {}, me = SITE.me, lastSync = null, busy = new Set();
 const today = new Date(); const todayISO = new Date(today.getTime() - today.getTimezoneOffset()*60000).toISOString().slice(0,10);
 const F = Object.assign({ date:'', page:'', by:'', st:'', q:'' }, store.get('filters') || {});
 
@@ -141,19 +137,6 @@ const fmtDate = iso => new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{wee
 const ago = ts => { const s=(Date.now()-new Date(ts))/1000; if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+' min ago'; if(s<86400) return Math.floor(s/3600)+' h ago'; return new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short'}); };
 const st = id => (STATUS[id] && STATUS[id].status) || 'todo';
 
-// ---------- gate ----------
-function gate() {
-  $('#app').innerHTML = `<div class="wrap"><form class="gate" id="gate">
-    <h1>Reel Tracker</h1><p class="muted small">VIBE · 999 Store · Lucknowi Mahal · Aarti Boutique. Tell us who you are, so the team can see who ticked each reel.</p>
-    <label for="g-name">Your name<input id="g-name" required maxlength="40" value="${esc(me?.name||'')}" placeholder="e.g. Priya"></label>
-    <label for="g-role">Your role<select id="g-role">${PEOPLE.map(p=>`<option ${me?.role===p?'selected':''}>${p}</option>`).join('')}</select></label>
-    <button class="btn primary" type="submit">Open the tracker</button></form></div>`;
-  $('#gate').addEventListener('submit', e => {
-    e.preventDefault();
-    me = { name: $('#g-name').value.trim(), role: $('#g-role').value }; store.set('me', me); boot();
-  });
-}
-
 // ---------- main ----------
 async function boot() {
   $('#app').innerHTML = '<div class="wrap"><p class="muted">Loading the plan…</p></div>';
@@ -169,23 +152,21 @@ async function boot() {
 }
 function shell(dates) {
   $('#app').innerHTML = `<div class="wrap">
-  <div class="top"><div><h1>Reel Tracker</h1><span class="muted small">21 Oct – 19 Nov 2026 · ${REELS.length} reels</span></div>
-    <div class="who"><span>${esc(me.name)} · <span class="muted">${esc(me.role)}</span></span><button class="btn" id="out">Switch</button><span class="sync" id="sync"></span></div></div>
+  <div class="top"><div><h1>${esc(SITE.heading)}</h1><span class="muted small">21 Oct – 19 Nov 2026 · ${REELS.length} reels · ${esc(SITE.sub)}</span></div>
+    <div class="who"><span class="sync" id="sync"></span></div></div>
   <div class="stats" id="stats"></div>
   <div class="controls">
     <label class="ctl" for="f-page">Store<select id="f-page"><option value="">All four</option>${Object.entries(NAME).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
-    <label class="ctl" for="f-by">Who shoots<select id="f-by"><option value="">Everyone</option><option value="Team">Team</option><option value="You">Owner</option></select></label>
     <label class="ctl" for="f-st">Status<select id="f-st"><option value="">Any</option>${STATES.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}<option value="late">Overdue</option></select></label>
     <label class="ctl" for="f-q">Search<input id="f-q" type="search" placeholder="title, product…"></label>
     <label class="ctl" for="f-all">&nbsp;<button class="btn" id="f-all" type="button">All days</button></label>
   </div>
   <div class="days" id="days">${dates.map(d=>`<button type="button" class="day${d===todayISO?' today':''}" data-d="${d}"><span class="small">${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span><b>${+d.slice(8)}</b><span class="small muted">${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{month:'short'})}</span><span class="dp"><i></i></span></button>`).join('')}</div>
   <div id="list"></div></div>`;
-  ['page','by','st'].forEach(k=>{ const el=$('#f-'+k); el.value=F[k]; el.addEventListener('change',()=>{F[k]=el.value; save(); render();}); });
+  ['page','st'].forEach(k=>{ const el=$('#f-'+k); el.value=F[k]; el.addEventListener('change',()=>{F[k]=el.value; save(); render();}); });
   const q=$('#f-q'); q.value=F.q; q.addEventListener('input',()=>{F.q=q.value; save(); render();});
   $('#f-all').addEventListener('click',()=>{F.date=''; save(); render();});
   $('#days').addEventListener('click',e=>{const b=e.target.closest('[data-d]'); if(!b) return; F.date = F.date===b.dataset.d ? '' : b.dataset.d; save(); render();});
-  $('#out').addEventListener('click',()=>{ store.set('me',null); me=null; gate(); });
   const on = $(`.day[data-d="${F.date}"]`); if (on) on.scrollIntoView({inline:'center',block:'nearest'});
 }
 const save = () => store.set('filters', F);
@@ -200,13 +181,11 @@ function renderStats() {
   const scope = F.date ? base.filter(r=>r.date===F.date) : base;
   const posted = scope.filter(r=>st(r.id)==='posted').length;
   const late = base.filter(isLate).length;
-  const team = scope.filter(r=>r.by==='Team'), you = scope.filter(r=>r.by==='You');
   const done = l => l.filter(r=>st(r.id)==='posted').length;
   $('#stats').innerHTML = `
    <div class="stat"><span class="small muted">${F.date?fmtDate(F.date):'Whole month'} · posted</span><span class="n">${posted}/${scope.length}</span>${bar(scope)}
      <div class="legend"><span><b style="background:var(--posted)"></b>Posted</span><span><b style="background:var(--edited)"></b>Edited</span><span><b style="background:var(--shot)"></b>Shot</span><span><b style="background:var(--todo-bg)"></b>To do</span></div></div>
-   <div class="stat"><span class="small muted">Team reels</span><span class="n">${done(team)}/${team.length}</span>${bar(team)}</div>
-   <div class="stat"><span class="small muted">Owner reels</span><span class="n">${done(you)}/${you.length}</span>${bar(you)}</div>
+   ${Object.entries(NAME).map(([k,v])=>{const l=scope.filter(r=>r.page===k); return l.length?`<div class="stat"><span class="small muted">${v}</span><span class="n">${done(l)}/${l.length}</span>${bar(l)}</div>`:''}).join('')}
    <div class="stat"><span class="small muted">Overdue (past days, not posted)</span><span class="n" style="color:${late?'var(--late)':'inherit'}">${late}</span><button class="btn" id="show-late" type="button">Show overdue</button></div>`;
   $('#show-late').addEventListener('click',()=>{F.date='';F.st='late';$('#f-st').value='late';save();render();});
   document.querySelectorAll('.day').forEach(b=>{ const l=REELS.filter(r=>r.date===b.dataset.d&&(!F.page||r.page===F.page)&&(!F.by||r.by===F.by)); b.querySelector('.dp i').style.width=(done(l)/(l.length||1)*100)+'%'; b.classList.toggle('on', b.dataset.d===F.date); });
@@ -256,13 +235,13 @@ document.addEventListener('click', async e => {
   const note = nb ? (art.querySelector('.note input').value.trim() || null) : null;
   busy.add(id); art.querySelectorAll('.status button').forEach(b=>b.disabled=true);
   try {
-    const row = await api('rpc/reel_update', {method:'POST', body: JSON.stringify({p_reel_id: id, p_status: status, p_by: me.name + ' (' + me.role + ')', p_note: note})});
+    const row = await api('rpc/reel_update', {method:'POST', body: JSON.stringify({p_reel_id: id, p_status: status, p_by: SITE.me.name, p_note: note})});
     STATUS[id] = row; toast(nb ? 'Note saved' : 'Marked ' + STATES.find(x=>x[0]===status)[1]);
   } catch (err) {
     toast('Not saved: ' + err.message);
   } finally { busy.delete(id); render(); }
 });
-me && me.name ? boot() : gate();
+boot();
 </script>
 </body>
 </html>

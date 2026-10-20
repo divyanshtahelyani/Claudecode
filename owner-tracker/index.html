@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>My Reel Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=Mukta:wght@400;500;700&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+:root{
+  --bg:#f6f4f8; --surface:#fff; --ink:#22162b; --muted:#6b5e75; --line:#e2dbe8;
+  --plum:#5b2a86; --marigold:#e8a317; --marigold-ink:#8a5a00;
+  --vibe:#1d6fd6; --nnn:#7a2bb5; --lm:#a07a2c; --aarti:#c2185b;
+  --todo:#6b5e75; --shot:#b4690e; --edited:#1d6fd6; --posted:#1f7a4d; --late:#b3261e;
+  --todo-bg:#eeeaf2; --shot-bg:#fbefdc; --edited-bg:#e2edfb; --posted-bg:#e3f4ea; --late-bg:#fbe5e3;
+  --display:"Bricolage Grotesque",ui-sans-serif,system-ui,sans-serif;
+  --body:"Mukta",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#151019; --surface:#1f1825; --ink:#efe8f4; --muted:#a898b3; --line:#342a3d;
+  --plum:#c39bea; --marigold:#f0b63a; --marigold-ink:#f0b63a;
+  --vibe:#6aa8ff; --nnn:#c79bf0; --lm:#e0bd72; --aarti:#ff79a8;
+  --todo:#a898b3; --shot:#f0a756; --edited:#6aa8ff; --posted:#6fd39e; --late:#ff8a80;
+  --todo-bg:#2a2231; --shot-bg:#3a2a14; --edited-bg:#17263d; --posted-bg:#173226; --late-bg:#3d1c1a;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;padding-top:env(safe-area-inset-top,0px)}
+.wrap{max-width:1100px;margin:0 auto;padding-block:20px 80px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:22px}
+h1,h2,h3{font-family:var(--display);margin:0;line-height:1.15;text-wrap:balance}
+h1{font-size:clamp(1.6rem,4.5vw,2.4rem);font-weight:800}
+h2{font-size:1.25rem;font-weight:800}
+.muted{color:var(--muted)} .small{font-size:.85rem}
+.mono{font-family:var(--mono);font-size:.78rem}
+button,select,input{font:inherit;color:var(--ink)}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--marigold);outline-offset:2px}
+.top{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;justify-content:space-between}
+.who{display:flex;gap:8px;align-items:center;font-size:.88rem}
+.btn{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:7px 12px;font-size:.88rem}
+.btn.primary{background:var(--plum);border-color:var(--plum);color:#fff}
+.sync{font-family:var(--mono);font-size:.74rem;color:var(--muted)}
+.err{color:var(--late);font-size:.88rem;min-height:1.2em}
+/* progress */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.stat .n{font-family:var(--display);font-size:1.5rem;font-weight:800}
+.bar{height:8px;border-radius:99px;background:var(--todo-bg);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:.78rem;color:var(--muted)}
+.legend b{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:middle}
+/* controls */
+.controls{display:flex;flex-wrap:wrap;gap:10px 12px;align-items:end;position:sticky;top:0;background:var(--bg);padding-block:10px;z-index:5;border-bottom:1px solid var(--line)}
+.ctl{display:flex;flex-direction:column;gap:3px;font-size:.74rem;color:var(--muted)}
+.ctl select,.ctl input{padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:var(--surface);font-size:.9rem;max-width:180px}
+.days{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px}
+.day{flex:0 0 auto;border:1px solid var(--line);background:var(--surface);border-radius:8px;padding:6px 10px;font-size:.8rem;text-align:center;min-width:64px}
+.day b{display:block;font-family:var(--display);font-size:1rem}
+.day.on{border-color:var(--plum);box-shadow:inset 0 -3px 0 var(--plum)}
+.day.today b{color:var(--marigold-ink)}
+.day .dp{display:block;height:4px;border-radius:99px;background:var(--todo-bg);margin-top:4px;overflow:hidden}
+.day .dp i{display:block;height:100%;background:var(--posted)}
+/* list */
+.group h3{font-size:1.05rem;margin:10px 0 8px}
+.list{display:flex;flex-direction:column;gap:10px}
+.reel{background:var(--surface);border:1px solid var(--line);border-left:5px solid var(--c);border-radius:10px;min-width:0}
+.c-vibe{--c:var(--vibe)} .c-999{--c:var(--nnn)} .c-lm{--c:var(--lm)} .c-aarti{--c:var(--aarti)}
+.rh{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-start;justify-content:space-between;padding:12px 14px}
+.rt{display:flex;flex-direction:column;gap:4px;min-width:0;flex:1 1 260px}
+.row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:.8rem}
+.pg{font-weight:700;color:var(--c)}
+.by{font-family:var(--mono);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em;padding:1px 8px;border-radius:99px;background:var(--todo-bg);color:var(--muted)}
+.by.you{background:var(--posted-bg);color:var(--posted)}
+.ttl{font-family:var(--display);font-weight:600;font-size:1.05rem;overflow-wrap:anywhere}
+.status{display:flex;gap:4px;flex-wrap:wrap}
+.status button{border:1px solid var(--line);background:var(--bg);border-radius:99px;padding:4px 10px;font-size:.78rem;color:var(--muted)}
+.status button[aria-pressed="true"].s-todo{background:var(--todo-bg);color:var(--todo);border-color:var(--todo)}
+.status button[aria-pressed="true"].s-shot{background:var(--shot-bg);color:var(--shot);border-color:var(--shot)}
+.status button[aria-pressed="true"].s-edited{background:var(--edited-bg);color:var(--edited);border-color:var(--edited)}
+.status button[aria-pressed="true"].s-posted{background:var(--posted-bg);color:var(--posted);border-color:var(--posted)}
+.status button:disabled{opacity:.5;cursor:wait}
+.late{font-family:var(--mono);font-size:.68rem;color:var(--late);background:var(--late-bg);padding:1px 8px;border-radius:99px}
+.upd{font-size:.74rem;color:var(--muted);width:100%}
+details.more{border-top:1px solid var(--line)}
+details.more summary{padding:8px 14px;font-size:.85rem;color:var(--plum);cursor:pointer}
+.sb{padding:4px 14px 16px;display:flex;flex-direction:column;gap:12px;font-size:.9rem}
+.meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px 20px}
+.meta div{min-width:0}
+h4{margin:0 0 2px;font-family:var(--mono);font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+.why{border-left:3px solid var(--marigold);padding-left:10px}
+.bt{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;width:100%;min-width:620px;font-size:.85rem}
+th,td{padding:6px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-family:var(--mono);font-size:.66rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:500;background:var(--bg)}
+td.t{font-family:var(--mono);white-space:nowrap;color:var(--muted)} td.x{font-weight:700;color:var(--c)} td.say{font-style:italic}
+pre.cap{margin:0;white-space:pre-wrap;font-family:var(--body);font-size:.86rem;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;overflow-wrap:anywhere}
+ul.ck{margin:0;padding-left:18px}
+.note{width:100%;display:flex;gap:6px}
+.note input{flex:1;min-width:0;padding:6px 9px;border:1px solid var(--line);border-radius:6px;background:var(--bg);font-size:.85rem}
+.empty{padding:30px;text-align:center;color:var(--muted);background:var(--surface);border:1px dashed var(--line);border-radius:10px}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:8px 14px;border-radius:8px;font-size:.88rem;z-index:20}
+@media (max-width:600px){.status button{padding:6px 10px}}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ---- config: Supabase project "the-register", table reel_status, saved via rpc reel_update ----
+const SB_URL = 'https://vrpfbdazgvadgkpfwpyr.supabase.co';
+const SB_KEY = 'sb_publishable_GX5lGoAsjEgVSEXKDtQ2tg_dnqTi19a';
+const SITE = {"heading": "My Reels", "sub": "your 3\u20135 reels a day", "me": {"name": "Owner"}};
+const STATES = [['todo','To do'],['shot','Shot'],['edited','Edited'],['posted','Posted']];
+const NAME = {'999':'999 Store','vibe':'VIBE','lm':'Lucknowi Mahal','aarti':'Aarti Boutique'};
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const store = { get(k){ try { return JSON.parse(localStorage.getItem('rt_'+k)); } catch(_) { return null; } },
+                set(k,v){ try { localStorage.setItem('rt_'+k, JSON.stringify(v)); } catch(_) {} } };
+let REELS = [], STATUS = {}, me = SITE.me, lastSync = null, busy = new Set();
+const today = new Date(); const todayISO = new Date(today.getTime() - today.getTimezoneOffset()*60000).toISOString().slice(0,10);
+const F = Object.assign({ date:'', page:'', by:'', st:'', q:'' }, store.get('filters') || {});
+
+async function api(path, opts={}) {
+  const r = await fetch(SB_URL + '/rest/v1/' + path, { ...opts, headers: { apikey: SB_KEY, Authorization: 'Bearer ' + SB_KEY, 'Content-Type': 'application/json', ...(opts.headers||{}) } });
+  const txt = await r.text(); const body = txt ? JSON.parse(txt) : null;
+  if (!r.ok) throw new Error((body && (body.message || body.error)) || ('HTTP ' + r.status));
+  return body;
+}
+async function loadStatus() {
+  const rows = await api('reel_status?select=*');
+  STATUS = Object.fromEntries(rows.map(r => [r.reel_id, r])); lastSync = new Date();
+}
+function toast(msg){ const t=document.createElement('div'); t.className='toast'; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2200); }
+const fmtDate = iso => new Date(iso+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+const ago = ts => { const s=(Date.now()-new Date(ts))/1000; if(s<60) return 'just now'; if(s<3600) return Math.floor(s/60)+' min ago'; if(s<86400) return Math.floor(s/3600)+' h ago'; return new Date(ts).toLocaleDateString('en-IN',{day:'numeric',month:'short'}); };
+const st = id => (STATUS[id] && STATUS[id].status) || 'todo';
+
+// ---------- main ----------
+async function boot() {
+  $('#app').innerHTML = '<div class="wrap"><p class="muted">Loading the plan…</p></div>';
+  try {
+    if (!REELS.length) REELS = await (await fetch('data/month.json', {cache:'no-cache'})).json();
+    await loadStatus();
+  } catch (e) { $('#app').innerHTML = `<div class="wrap"><div class="empty">Could not load: ${esc(e.message)}. Check your connection and refresh.</div></div>`; return; }
+  const dates = [...new Set(REELS.map(r=>r.date))].sort();
+  if (F.date && !dates.includes(F.date)) F.date='';
+  if (F.date==='' && store.get('filters')==null) F.date = dates.includes(todayISO) ? todayISO : dates[0];
+  shell(dates); render();
+  setInterval(async()=>{ try{ await loadStatus(); render(false); }catch(_){} }, 30000);
+}
+function shell(dates) {
+  $('#app').innerHTML = `<div class="wrap">
+  <div class="top"><div><h1>${esc(SITE.heading)}</h1><span class="muted small">21 Oct – 19 Nov 2026 · ${REELS.length} reels · ${esc(SITE.sub)}</span></div>
+    <div class="who"><span class="sync" id="sync"></span></div></div>
+  <div class="stats" id="stats"></div>
+  <div class="controls">
+    <label class="ctl" for="f-page">Store<select id="f-page"><option value="">All four</option>${Object.entries(NAME).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select></label>
+    <label class="ctl" for="f-st">Status<select id="f-st"><option value="">Any</option>${STATES.map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}<option value="late">Overdue</option></select></label>
+    <label class="ctl" for="f-q">Search<input id="f-q" type="search" placeholder="title, product…"></label>
+    <label class="ctl" for="f-all">&nbsp;<button class="btn" id="f-all" type="button">All days</button></label>
+  </div>
+  <div class="days" id="days">${dates.map(d=>`<button type="button" class="day${d===todayISO?' today':''}" data-d="${d}"><span class="small">${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short'})}</span><b>${+d.slice(8)}</b><span class="small muted">${new Date(d+'T00:00:00').toLocaleDateString('en-IN',{month:'short'})}</span><span class="dp"><i></i></span></button>`).join('')}</div>
+  <div id="list"></div></div>`;
+  ['page','st'].forEach(k=>{ const el=$('#f-'+k); el.value=F[k]; el.addEventListener('change',()=>{F[k]=el.value; save(); render();}); });
+  const q=$('#f-q'); q.value=F.q; q.addEventListener('input',()=>{F.q=q.value; save(); render();});
+  $('#f-all').addEventListener('click',()=>{F.date=''; save(); render();});
+  $('#days').addEventListener('click',e=>{const b=e.target.closest('[data-d]'); if(!b) return; F.date = F.date===b.dataset.d ? '' : b.dataset.d; save(); render();});
+  const on = $(`.day[data-d="${F.date}"]`); if (on) on.scrollIntoView({inline:'center',block:'nearest'});
+}
+const save = () => store.set('filters', F);
+const isLate = r => r.date < todayISO && st(r.id) !== 'posted';
+
+function bar(list) {
+  const c = {todo:0,shot:0,edited:0,posted:0}; list.forEach(r=>c[st(r.id)]++); const n=list.length||1;
+  return `<div class="bar">${['posted','edited','shot'].map(k=>`<i style="width:${c[k]/n*100}%;background:var(--${k})"></i>`).join('')}</div>`;
+}
+function renderStats() {
+  const base = REELS.filter(r=>(!F.page||r.page===F.page)&&(!F.by||r.by===F.by));
+  const scope = F.date ? base.filter(r=>r.date===F.date) : base;
+  const posted = scope.filter(r=>st(r.id)==='posted').length;
+  const late = base.filter(isLate).length;
+  const done = l => l.filter(r=>st(r.id)==='posted').length;
+  $('#stats').innerHTML = `
+   <div class="stat"><span class="small muted">${F.date?fmtDate(F.date):'Whole month'} · posted</span><span class="n">${posted}/${scope.length}</span>${bar(scope)}
+     <div class="legend"><span><b style="background:var(--posted)"></b>Posted</span><span><b style="background:var(--edited)"></b>Edited</span><span><b style="background:var(--shot)"></b>Shot</span><span><b style="background:var(--todo-bg)"></b>To do</span></div></div>
+   ${Object.entries(NAME).map(([k,v])=>{const l=scope.filter(r=>r.page===k); return l.length?`<div class="stat"><span class="small muted">${v}</span><span class="n">${done(l)}/${l.length}</span>${bar(l)}</div>`:''}).join('')}
+   <div class="stat"><span class="small muted">Overdue (past days, not posted)</span><span class="n" style="color:${late?'var(--late)':'inherit'}">${late}</span><button class="btn" id="show-late" type="button">Show overdue</button></div>`;
+  $('#show-late').addEventListener('click',()=>{F.date='';F.st='late';$('#f-st').value='late';save();render();});
+  document.querySelectorAll('.day').forEach(b=>{ const l=REELS.filter(r=>r.date===b.dataset.d&&(!F.page||r.page===F.page)&&(!F.by||r.by===F.by)); b.querySelector('.dp i').style.width=(done(l)/(l.length||1)*100)+'%'; b.classList.toggle('on', b.dataset.d===F.date); });
+  $('#sync').textContent = lastSync ? 'Synced ' + lastSync.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
+}
+function card(r) {
+  const s = st(r.id), info = STATUS[r.id];
+  return `<article class="reel c-${r.page}" data-id="${r.id}">
+  <div class="rh"><div class="rt">
+    <div class="row"><span class="pg">${NAME[r.page]}</span><span class="mono muted">${fmtDate(r.date)} · ${r.slot}</span><span class="by ${r.by==='You'?'you':''}">${r.by==='You'?'Owner':'Team'}</span><span class="mono muted">${esc(r.fmt)} · ${esc(r.len)}</span>${isLate(r)?'<span class="late">OVERDUE</span>':''}</div>
+    <div class="ttl">${esc(r.title)}</div></div>
+    <div class="status" role="group" aria-label="Status">${STATES.map(([k,v])=>`<button type="button" class="s-${k}" data-s="${k}" aria-pressed="${s===k}">${v}</button>`).join('')}</div>
+    ${info?`<div class="upd">${STATES.find(x=>x[0]===info.status)[1]} · ${esc(info.done_by||'')} · ${ago(info.updated_at)}${info.note?` · “${esc(info.note)}”`:''}</div>`:''}
+    <div class="note"><input type="text" maxlength="200" placeholder="Note (e.g. posted link, problem)" aria-label="Note"><button class="btn" type="button" data-note>Save note</button></div>
+  </div>
+  <details class="more"><summary>Full script</summary><div class="sb">
+    <p class="why"><b>Why this reel:</b> ${esc(r.why)}</p>
+    <div class="meta"><div><h4>Where</h4>${esc(r.where)}</div><div><h4>Cast</h4>${esc(r.cast)}</div><div><h4>Props</h4>${esc(r.props)}</div><div><h4>Audio</h4>${esc(r.audio)}</div></div>
+    <div><h4>Shot by shot</h4><div class="bt"><table><thead><tr><th>Time</th><th>What the camera sees</th><th>On-screen text</th><th>What is said</th></tr></thead><tbody>${r.beats.map(b=>`<tr><td class="t">${esc(b[0])}</td><td>${esc(b[1])}</td><td class="x">${esc(b[2])}</td><td class="say">${esc(b[3])}</td></tr>`).join('')}</tbody></table></div></div>
+    <div class="meta"><div><h4>Camera</h4>${esc(r.camera)}</div><div><h4>Light & look</h4>${esc(r.light)}</div><div><h4>Styling</h4>${esc(r.styling)}</div><div><h4>Cover</h4>${esc(r.cover)}</div></div>
+    <div><h4>Edit notes</h4>${esc(r.edit)}</div>
+    <div class="meta"><div><h4>Shots to capture</h4><ul class="ck">${r.checklist.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div><div><h4>Before you shoot</h4><ul class="ck">${r.prep.map(x=>`<li>${esc(x)}</li>`).join('')}</ul></div></div>
+    <div><h4>Caption</h4><pre class="cap">${esc(r.caption)}</pre></div>
+    <div><button class="btn" type="button" data-copy>Copy caption</button></div>
+    <div class="meta"><div><h4>Pinned comment</h4>${esc(r.pin)}</div>${r.reply?`<div><h4>Replying to comments</h4>${esc(r.reply)}</div>`:''}<div><h4>Posting</h4>${esc(r.post)}</div></div>
+  </div></details></article>`;
+}
+function render(full=true) {
+  renderStats();
+  const q = F.q.trim().toLowerCase();
+  const list = REELS.filter(r=>(!F.date||r.date===F.date)&&(!F.page||r.page===F.page)&&(!F.by||r.by===F.by)
+    &&(!F.st||(F.st==='late'?isLate(r):st(r.id)===F.st))&&(!q||(r.title+' '+r.props+' '+r.caption).toLowerCase().includes(q)));
+  const openIds = new Set([...document.querySelectorAll('details.more[open]')].map(d=>d.closest('.reel').dataset.id));
+  if (!list.length) { $('#list').innerHTML = '<div class="empty">No reels match these filters.</div>'; return; }
+  const dates=[...new Set(list.map(r=>r.date))];
+  $('#list').innerHTML = dates.map(d=>`<section class="group"><h3>${fmtDate(d)}${d===todayISO?' · today':''}</h3><div class="list">${list.filter(r=>r.date===d).map(card).join('')}</div></section>`).join('');
+  openIds.forEach(id=>{ const el=document.querySelector(`.reel[data-id="${id}"] details`); if(el) el.open=true; });
+}
+document.addEventListener('click', async e => {
+  const art = e.target.closest('.reel'); if (!art) return;
+  const id = art.dataset.id, r = REELS.find(x=>x.id===id);
+  const sb = e.target.closest('[data-s]');
+  const nb = e.target.closest('[data-note]');
+  if (e.target.closest('[data-copy]')) { const t=r.caption; try{ await navigator.clipboard.writeText(t); toast('Caption copied'); }catch(_){ const p=art.querySelector('pre.cap'); const rg=document.createRange(); rg.selectNodeContents(p); const s=getSelection(); s.removeAllRanges(); s.addRange(rg); toast('Selected — press copy'); } return; }
+  if ((!sb && !nb) || busy.has(id)) return;
+  const status = sb ? sb.dataset.s : st(id);
+  const note = nb ? (art.querySelector('.note input').value.trim() || null) : null;
+  busy.add(id); art.querySelectorAll('.status button').forEach(b=>b.disabled=true);
+  try {
+    const row = await api('rpc/reel_update', {method:'POST', body: JSON.stringify({p_reel_id: id, p_status: status, p_by: SITE.me.name, p_note: note})});
+    STATUS[id] = row; toast(nb ? 'Note saved' : 'Marked ' + STATES.find(x=>x[0]===status)[1]);
+  } catch (err) {
+    toast('Not saved: ' + err.message);
+  } finally { busy.delete(id); render(); }
+});
+boot();
+</script>
+</body>
+</html>
