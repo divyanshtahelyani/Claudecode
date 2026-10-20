@@ -111,7 +111,7 @@ ul.ck{margin:0;padding-left:18px}
 <body>
 <div id="app"></div>
 <script>
-// ---- config: Supabase project "the-register", tables reel_status / reel_tracker_config ----
+// ---- config: Supabase project "the-register", table reel_status, saved via rpc reel_update ----
 const SB_URL = 'https://vrpfbdazgvadgkpfwpyr.supabase.co';
 const SB_KEY = 'sb_publishable_GX5lGoAsjEgVSEXKDtQ2tg_dnqTi19a';
 const STATES = [['todo','To do'],['shot','Shot'],['edited','Edited'],['posted','Posted']];
@@ -142,23 +142,16 @@ const ago = ts => { const s=(Date.now()-new Date(ts))/1000; if(s<60) return 'jus
 const st = id => (STATUS[id] && STATUS[id].status) || 'todo';
 
 // ---------- gate ----------
-function gate(err='') {
+function gate() {
   $('#app').innerHTML = `<div class="wrap"><form class="gate" id="gate">
-    <h1>Reel Tracker</h1><p class="muted small">VIBE · 999 Store · Lucknowi Mahal · Aarti Boutique. Enter the team PIN to tick off reels.</p>
+    <h1>Reel Tracker</h1><p class="muted small">VIBE · 999 Store · Lucknowi Mahal · Aarti Boutique. Tell us who you are, so the team can see who ticked each reel.</p>
     <label for="g-name">Your name<input id="g-name" required maxlength="40" value="${esc(me?.name||'')}" placeholder="e.g. Priya"></label>
     <label for="g-role">Your role<select id="g-role">${PEOPLE.map(p=>`<option ${me?.role===p?'selected':''}>${p}</option>`).join('')}</select></label>
-    <label for="g-pin">Team PIN<input id="g-pin" required inputmode="numeric" autocomplete="off" maxlength="12"></label>
-    <div class="err" id="g-err">${esc(err)}</div>
-    <button class="btn primary" type="submit">Open the tracker</button>
-    <button class="btn" type="button" id="g-view">View only (no PIN)</button></form></div>`;
-  $('#gate').addEventListener('submit', async e => {
-    e.preventDefault(); const pin=$('#g-pin').value.trim(); $('#g-err').textContent='Checking…';
-    try { const ok = await api('rpc/reel_check_pin', {method:'POST', body: JSON.stringify({p_pin: pin})});
-      if (!ok) { $('#g-err').textContent='That PIN is not right. Ask the owner for the team PIN.'; return; }
-      me = { name: $('#g-name').value.trim(), role: $('#g-role').value, pin }; store.set('me', me); boot();
-    } catch(err) { $('#g-err').textContent = 'Could not reach the server: ' + err.message; }
+    <button class="btn primary" type="submit">Open the tracker</button></form></div>`;
+  $('#gate').addEventListener('submit', e => {
+    e.preventDefault();
+    me = { name: $('#g-name').value.trim(), role: $('#g-role').value }; store.set('me', me); boot();
   });
-  $('#g-view').addEventListener('click', () => { me = { name:'Viewer', role:'View only', pin:null }; boot(); });
 }
 
 // ---------- main ----------
@@ -220,14 +213,14 @@ function renderStats() {
   $('#sync').textContent = lastSync ? 'Synced ' + lastSync.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}) : '';
 }
 function card(r) {
-  const s = st(r.id), info = STATUS[r.id], can = !!me.pin;
+  const s = st(r.id), info = STATUS[r.id];
   return `<article class="reel c-${r.page}" data-id="${r.id}">
   <div class="rh"><div class="rt">
     <div class="row"><span class="pg">${NAME[r.page]}</span><span class="mono muted">${fmtDate(r.date)} · ${r.slot}</span><span class="by ${r.by==='You'?'you':''}">${r.by==='You'?'Owner':'Team'}</span><span class="mono muted">${esc(r.fmt)} · ${esc(r.len)}</span>${isLate(r)?'<span class="late">OVERDUE</span>':''}</div>
     <div class="ttl">${esc(r.title)}</div></div>
-    <div class="status" role="group" aria-label="Status">${STATES.map(([k,v])=>`<button type="button" class="s-${k}" data-s="${k}" aria-pressed="${s===k}" ${can?'':'disabled title="Enter the PIN to change status"'}>${v}</button>`).join('')}</div>
+    <div class="status" role="group" aria-label="Status">${STATES.map(([k,v])=>`<button type="button" class="s-${k}" data-s="${k}" aria-pressed="${s===k}">${v}</button>`).join('')}</div>
     ${info?`<div class="upd">${STATES.find(x=>x[0]===info.status)[1]} · ${esc(info.done_by||'')} · ${ago(info.updated_at)}${info.note?` · “${esc(info.note)}”`:''}</div>`:''}
-    ${can?`<div class="note"><input type="text" maxlength="200" placeholder="Note (e.g. posted link, problem)" aria-label="Note"><button class="btn" type="button" data-note>Save note</button></div>`:''}
+    <div class="note"><input type="text" maxlength="200" placeholder="Note (e.g. posted link, problem)" aria-label="Note"><button class="btn" type="button" data-note>Save note</button></div>
   </div>
   <details class="more"><summary>Full script</summary><div class="sb">
     <p class="why"><b>Why this reel:</b> ${esc(r.why)}</p>
@@ -258,19 +251,18 @@ document.addEventListener('click', async e => {
   const sb = e.target.closest('[data-s]');
   const nb = e.target.closest('[data-note]');
   if (e.target.closest('[data-copy]')) { const t=r.caption; try{ await navigator.clipboard.writeText(t); toast('Caption copied'); }catch(_){ const p=art.querySelector('pre.cap'); const rg=document.createRange(); rg.selectNodeContents(p); const s=getSelection(); s.removeAllRanges(); s.addRange(rg); toast('Selected — press copy'); } return; }
-  if ((!sb && !nb) || !me.pin || busy.has(id)) return;
+  if ((!sb && !nb) || busy.has(id)) return;
   const status = sb ? sb.dataset.s : st(id);
   const note = nb ? (art.querySelector('.note input').value.trim() || null) : null;
   busy.add(id); art.querySelectorAll('.status button').forEach(b=>b.disabled=true);
   try {
-    const row = await api('rpc/reel_set_status', {method:'POST', body: JSON.stringify({p_pin: me.pin, p_reel_id: id, p_status: status, p_by: me.name + ' (' + me.role + ')', p_note: note})});
+    const row = await api('rpc/reel_update', {method:'POST', body: JSON.stringify({p_reel_id: id, p_status: status, p_by: me.name + ' (' + me.role + ')', p_note: note})});
     STATUS[id] = row; toast(nb ? 'Note saved' : 'Marked ' + STATES.find(x=>x[0]===status)[1]);
   } catch (err) {
-    if (/PIN/i.test(err.message)) { store.set('me', null); gate('The PIN changed. Enter the new one.'); return; }
     toast('Not saved: ' + err.message);
   } finally { busy.delete(id); render(); }
 });
-me ? (me.pin === undefined ? gate() : boot()) : gate();
+me && me.name ? boot() : gate();
 </script>
 </body>
 </html>
