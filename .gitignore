@@ -1,0 +1,3 @@
+
+# Build archives (e.g. reel-tracker.zip for Netlify Drop)
+*.zip
