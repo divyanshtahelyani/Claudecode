@@ -6,7 +6,7 @@ It holds 363 scripts: 123 for the owner and 240 for the team.
 - `index.html`: the whole app (no build step).
 - `data/month.json`: every script (shots, lines, captions, camera, edit notes).
 - Status is stored in Supabase (project **the-register**, table `public.reel_status`).
-  Changes go through `public.reel_update(…)`. There is no PIN, so anyone with the link can tick reels.
+  Changes go through `public.reel_update(…)`. Anyone with the link can tick reels.
 
 ## Put it on Netlify (one time)
 
